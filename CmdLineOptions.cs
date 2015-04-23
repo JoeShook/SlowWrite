@@ -14,7 +14,7 @@ namespace SlowWrite
         [Option('o', "Output", Required = true, HelpText = "Output file path")]
         public string OutputFilePath { get; set; }
 
-        [HelpOption(HelpText = @"Example: SlowWrite -i Data\In\license.txt -o Data\Out\license.txt -l 500")]
+        [HelpOption(HelpText = @"Example: SlowWrite -i Data\In\license.txt -o Data\Out\license.txt -l 500  or   SlowWrite.exe -i Data\In\*.txt -o Data\Out -l 500")]
         public string GetUsage()
         {
             var helpText = HelpText.AutoBuild(this);
