@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -20,7 +21,9 @@ namespace SlowWrite
                 Console.ReadLine();
                 Environment.Exit(Parser.DefaultExitCodeFail);
             }
-            
+
+            EnsureFolders();
+
             if (File.Exists(InputPath()))
             {
                 CopySingleFile();
@@ -28,6 +31,14 @@ namespace SlowWrite
             else
             {
                 CopyManyFiles();
+            }
+        }
+
+        private static void EnsureFolders()
+        {
+            if (!string.IsNullOrEmpty(_options.BackupFilePath) && !Directory.Exists(_options.BackupFilePath))
+            {
+                Directory.CreateDirectory(_options.BackupFilePath);
             }
         }
 
@@ -43,19 +54,55 @@ namespace SlowWrite
         private static void CopyManyFiles()
         {
             var inputDirectoryInfo = new DirectoryInfo(GetDirectory(InputPath()));
-            var files = inputDirectoryInfo.EnumerateFiles(GetFilePattern(), SearchOption.TopDirectoryOnly);
 
+            var files = inputDirectoryInfo
+                .EnumerateFiles(GetFilePattern(), SearchOption.TopDirectoryOnly)
+                .OrderBy(x => x.LastWriteTime);
+            
             var po = new ParallelOptions
             {
-                MaxDegreeOfParallelism = Environment.ProcessorCount
+                MaxDegreeOfParallelism = _options.Threads 
             };
 
             Parallel.ForEach(files, po, (file) =>
             {
+                var outFile = Path.Combine(OutputPath(), file.Name);
                 using (var inputStream = new StreamReader(file.FullName))
-                using (var outputStream = new StreamWriter(Path.Combine(OutputPath(), file.Name)))
+                using (var outFileStream = new FileStream(Path.Combine(OutputPath(), file.Name), FileMode.Create, FileAccess.Write, FileShare.Write))
+                using (var outputStream = new StreamWriter(outFileStream))
                 {
                     CopyFile(inputStream, outputStream);
+                }
+
+                if (file.Extension == ".eml")
+                {
+                    
+                    try
+                    {
+                        // Touch the file
+                        for (int i = 0; i < 1000; i++)
+                        {
+                            using (var outFileStream = new FileStream(Path.Combine(OutputPath(), file.Name), FileMode.Open, FileAccess.Read, FileShare.Write))
+                            {
+                                File.SetLastWriteTime(outFile, DateTime.Now.Add(TimeSpan.FromSeconds(-i)));
+                                Thread.Sleep(TimeSpan.FromMilliseconds(2));
+                            }
+                        }
+                        
+                    }
+                    catch
+                    {
+                        Console.WriteLine("Error");
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(_options.BackupFilePath))
+                {
+                    file.MoveTo(Path.Combine(_options.BackupFilePath, file.Name));
+                }
+                else if (_options.DeleteSourceFile)
+                {
+                    file.Delete();
                 }
             });
         }
@@ -95,14 +142,22 @@ namespace SlowWrite
             sw.Start();
             
             string line;
+
             while ((line = input.ReadLine()) != null)
             {
+                Thread.Sleep(_options.LineWait);
                 Console.Write(".");
                 output.WriteLine(line);
-                Thread.Sleep(_options.LineWait);
             }
 
             Console.WriteLine(sw.Elapsed);
+        }
+
+        protected IEnumerable<FileInfo> GetSortedFiles(string searchPattern, string path)
+        {
+            var directoryInfo = new DirectoryInfo(path);
+            return directoryInfo.EnumerateFiles("*" + searchPattern, SearchOption.TopDirectoryOnly)
+                .OrderBy(x => x.LastWriteTime);
         }
     }
 }
