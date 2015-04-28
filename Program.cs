@@ -54,57 +54,70 @@ namespace SlowWrite
         private static void CopyManyFiles()
         {
             var inputDirectoryInfo = new DirectoryInfo(GetDirectory(InputPath()));
-
-            var files = inputDirectoryInfo
-                .EnumerateFiles(GetFilePattern(), SearchOption.TopDirectoryOnly)
-                .OrderBy(x => x.LastWriteTime);
             
-            var po = new ParallelOptions
+            while(! Console.KeyAvailable)
             {
-                MaxDegreeOfParallelism = _options.Threads 
-            };
-
-            Parallel.ForEach(files, po, (file) =>
-            {
-                var outFile = Path.Combine(OutputPath(), file.Name);
-                using (var inputStream = new StreamReader(file.FullName))
-                using (var outFileStream = new FileStream(Path.Combine(OutputPath(), file.Name), FileMode.Create, FileAccess.Write, FileShare.Write))
-                using (var outputStream = new StreamWriter(outFileStream))
+                try
                 {
-                    CopyFile(inputStream, outputStream);
-                }
+                    var files = inputDirectoryInfo
+                        .EnumerateFiles(GetFilePattern(), SearchOption.TopDirectoryOnly)
+                        .OrderBy(x => x.LastWriteTime);
 
-                if (file.Extension == ".eml")
-                {
-                    
-                    try
+                    var po = new ParallelOptions
                     {
-                        // Touch the file
-                        for (int i = 0; i < 1000; i++)
+                        MaxDegreeOfParallelism = _options.Threads
+                    };
+
+                    Parallel.ForEach(files, po, (file) =>
+                    {
+                        var outFile = Path.Combine(OutputPath(), file.Name);
+                        using (var inputStream = new StreamReader(file.FullName))
+                        using (
+                            var outFileStream = new FileStream(Path.Combine(OutputPath(), file.Name), FileMode.Create,
+                                FileAccess.Write, FileShare.Write))
+                        using (var outputStream = new StreamWriter(outFileStream))
                         {
-                            using (var outFileStream = new FileStream(Path.Combine(OutputPath(), file.Name), FileMode.Open, FileAccess.Read, FileShare.Write))
-                            {
-                                File.SetLastWriteTime(outFile, DateTime.Now.Add(TimeSpan.FromSeconds(-i)));
-                                Thread.Sleep(TimeSpan.FromMilliseconds(2));
-                            }
+                            CopyFile(inputStream, outputStream);
                         }
-                        
-                    }
-                    catch
-                    {
-                        Console.WriteLine("Error");
-                    }
-                }
 
-                if (!string.IsNullOrEmpty(_options.BackupFilePath))
-                {
-                    file.MoveTo(Path.Combine(_options.BackupFilePath, file.Name));
+
+                        try
+                        {
+                            // Touch the file
+                            for (int i = 0; i < 5; i++)
+                            {
+                                using (
+                                    var outFileStream = new FileStream(Path.Combine(OutputPath(), file.Name), FileMode.Open,
+                                        FileAccess.Read, FileShare.Write))
+                                {
+                                    File.SetLastWriteTime(outFile, DateTime.Now.Add(TimeSpan.FromSeconds(-i)));
+                                    Thread.Sleep(TimeSpan.FromMilliseconds(250));
+                                }
+                            }
+
+                        }
+                        catch
+                        {
+                            Console.WriteLine("Error");
+                        }
+
+
+                        if (!string.IsNullOrEmpty(_options.BackupFilePath))
+                        {
+                            file.MoveTo(Path.Combine(_options.BackupFilePath, file.Name));
+                        }
+                        else if (_options.DeleteSourceFile)
+                        {
+                            file.Delete();
+                        }
+                    });
                 }
-                else if (_options.DeleteSourceFile)
+                catch
                 {
-                    file.Delete();
+                    //do nothing
                 }
-            });
+                Thread.Sleep(TimeSpan.FromSeconds(1));
+            }  
         }
 
         private static string InputPath()
